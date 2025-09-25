@@ -1,4 +1,5 @@
 import os
+import shutil
 import asyncio
 import zipfile
 import rarfile
@@ -9,7 +10,7 @@ from aiogram.types import FSInputFile
 from aiogram.filters import Command
 from aiogram.exceptions import TelegramRetryAfter
 
-BOT_TOKEN = "YOUR_BOT_TOKEN"
+BOT_TOKEN = "7315722537:AAEPH6QCVIhP0a16Se9nDDe14pgH-5oigMU"
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -22,7 +23,7 @@ MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB
 
 @dp.message(Command("start"))
 async def start_cmd(message: types.Message):
-    await message.answer("Send me a ZIP/RAR/7Z file. I’ll extract it and send all media back as videos 🎬")
+    await message.answer("Send me a ZIP/RAR/7Z file. I’ll extract it, send all videos, then clean up ZIP + sent media ✅")
 
 
 @dp.message(lambda msg: msg.document)
@@ -63,6 +64,8 @@ async def handle_file(message: types.Message):
 
     await message.answer("📤 Sending extracted files as video...")
 
+    sent_files = []  # track files that were successfully sent
+
     for root, _, files in os.walk(extract_dir):
         for file in files:
             file_path = os.path.join(root, file)
@@ -76,9 +79,9 @@ async def handle_file(message: types.Message):
             try:
                 if mime and mime.startswith("video"):
                     await message.answer_video(FSInputFile(file_path))
+                    sent_files.append(file_path)
                 else:
-                    # Agar video nahi hai → dummy conversion needed (future scope)
-                    await message.answer(f"ℹ️ {file} is not video, skipping (convert required).")
+                    await message.answer(f"ℹ️ {file} is not video, skipping (conversion required).")
             except TelegramRetryAfter as e:
                 await message.answer(f"⏳ Flood wait {e.retry_after}s, pausing...")
                 await asyncio.sleep(e.retry_after + 1)
@@ -87,7 +90,18 @@ async def handle_file(message: types.Message):
 
             await asyncio.sleep(2)  # flood control
 
-    await message.answer("✅ Done!")
+    await message.answer("✅ Done! Cleaning up ZIP + sent media...")
+
+    # 🔥 Delete only ZIP and sent media files
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        for f in sent_files:
+            if os.path.exists(f):
+                os.remove(f)
+        await message.answer("🗑️ Cleanup successful (ZIP + sent media deleted).")
+    except Exception as e:
+        await message.answer(f"⚠️ Cleanup failed: {e}")
 
 
 async def main():
